@@ -4,8 +4,9 @@
   "private": true,
   "description": "mile project orchestration for web, server, test, and compose deployment.",
   "scripts": {
-    "dev": "docker-compose up -d postgres redis && yarn server:dev",
-    "dev:infra": "docker-compose up -d postgres redis",
+    "install:all": " yarn --cwd mile-server install &&  yarn --cwd mile-web install",
+    "dev": "docker compose up -d postgres redis && yarn server:dev",
+    "dev:infra": "docker compose up -d postgres redis",
     "dev:web": "yarn --cwd mile-web dev",
     "dev:server": "yarn --cwd mile-server start:dev",
     "build": "yarn server:build && yarn web:build",
@@ -22,10 +23,10 @@
     "server:lint": "yarn --cwd mile-server lint",
     "web:build": "yarn --cwd mile-web build",
     "web:lint": "yarn --cwd mile-web lint",
-    "compose:build": "docker-compose build",
-    "compose:up": "docker-compose up -d --build",
-    "compose:down": "docker-compose down",
-    "compose:logs": "docker-compose logs -f"
+    "compose:build": "docker compose build",
+    "compose:up": "docker compose up -d --build",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
   },
   "engines": {
     "node": ">=22.12.0"
