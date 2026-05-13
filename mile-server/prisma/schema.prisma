@@ -1,0 +1,427 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceType {
+  PERSONAL
+  WORK
+}
+
+enum ProjectStatus {
+  IDEA
+  PLANNING
+  ACTIVE
+  PAUSED
+  MAINTENANCE
+  COMPLETED
+  ARCHIVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  BACKLOG
+  READY
+  IN_PROGRESS
+  WAITING
+  REVIEW
+  DONE
+  CANCELED
+  ARCHIVED
+}
+
+enum TaskType {
+  TASK
+  BUG
+  IDEA
+  RESEARCH
+  DECISION_REQUIRED
+  MEETING_ACTION
+  DEPLOY
+  MAINTENANCE
+  DOCUMENT
+}
+
+enum EventType {
+  PERSONAL
+  WORK
+  MEETING
+  DEADLINE
+  REMINDER
+  REVIEW
+  DEPLOYMENT
+  MAINTENANCE
+  DEV
+  RELEASE
+  CI_BUILD
+  INCIDENT
+}
+
+enum EventSyncStatus {
+  INTERNAL
+  EXTERNAL
+  SYNCED
+  FAILED
+}
+
+enum DecisionStatus {
+  PROPOSED
+  DECIDED
+  REVISITED
+  SUPERSEDED
+  CANCELED
+}
+
+enum HistoryEntityType {
+  USER
+  WORKSPACE
+  PROJECT
+  TASK
+  EVENT
+  DECISION
+  CALENDAR_SOURCE
+  CI_PROVIDER
+  CI_JOB
+  CI_BUILD
+  DEPLOYMENT
+}
+
+enum HistoryEventType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  DELETED
+  SYNCED
+  FAILED
+}
+
+enum CalendarProvider {
+  INTERNAL
+  APPLE_CALDAV
+  GOOGLE_CALENDAR
+  ICS_FEED
+  DEV_CAL
+}
+
+enum SyncDirection {
+  READ_ONLY
+  WRITE_ONLY
+  TWO_WAY
+}
+
+enum CalendarSourceStatus {
+  CONNECTED
+  SYNCING
+  FAILED
+  DISABLED
+}
+
+enum CalendarSyncLogStatus {
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum CiProviderType {
+  JENKINS
+  GITHUB_ACTIONS
+  GITLAB_CI
+  TEAMCITY
+}
+
+enum CiAuthType {
+  NONE
+  BASIC
+  TOKEN
+}
+
+enum CiProviderStatus {
+  CONNECTED
+  FAILED
+  DISABLED
+}
+
+enum CiBuildStatus {
+  IDLE
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
+  UNSTABLE
+  UNKNOWN
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  name         String
+  avatarUrl    String?     @map("avatar_url")
+  timezone     String      @default("UTC")
+  locale       String      @default("ko-KR")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  workspaces   Workspace[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id              String           @id @default(cuid())
+  ownerId         String           @map("owner_id")
+  name            String
+  type            WorkspaceType
+  description     String?
+  color           String?
+  icon            String?
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  owner           User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects        Project[]
+  tasks           Task[]
+  events          Event[]
+  decisions       Decision[]
+  calendarSources CalendarSource[]
+  ciProviders     CiProvider[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  workspaceId String        @map("workspace_id")
+  name        String
+  slug        String
+  description String?
+  goal        String?
+  status      ProjectStatus @default(PLANNING)
+  priority    Priority      @default(MEDIUM)
+  startDate   DateTime?     @map("start_date")
+  targetDate  DateTime?     @map("target_date")
+  completedAt DateTime?     @map("completed_at")
+  archivedAt  DateTime?     @map("archived_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  events      Event[]
+  decisions   Decision[]
+  ciJobs      CiJob[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@map("projects")
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  workspaceId  String     @map("workspace_id")
+  projectId    String?    @map("project_id")
+  parentTaskId String?    @map("parent_task_id")
+  title        String
+  description  String?
+  type         TaskType   @default(TASK)
+  status       TaskStatus @default(BACKLOG)
+  priority     Priority   @default(MEDIUM)
+  startDate    DateTime?  @map("start_date")
+  dueDate      DateTime?  @map("due_date")
+  completedAt  DateTime?  @map("completed_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentTask   Task?      @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  subtasks     Task[]     @relation("TaskHierarchy")
+  events       Event[]
+
+  @@index([workspaceId, status])
+  @@index([projectId])
+  @@map("tasks")
+}
+
+model Event {
+  id               String          @id @default(cuid())
+  workspaceId      String          @map("workspace_id")
+  projectId        String?         @map("project_id")
+  taskId           String?         @map("task_id")
+  calendarSourceId String?         @map("calendar_source_id")
+  externalEventId  String?         @map("external_event_id")
+  title            String
+  description      String?
+  type             EventType       @default(WORK)
+  startAt          DateTime        @map("start_at")
+  endAt            DateTime        @map("end_at")
+  allDay           Boolean         @default(false) @map("all_day")
+  recurrenceRule   String?         @map("recurrence_rule")
+  syncStatus       EventSyncStatus @default(INTERNAL) @map("sync_status")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task             Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  calendarSource   CalendarSource? @relation(fields: [calendarSourceId], references: [id], onDelete: SetNull)
+  externalMapping  ExternalCalendarEvent?
+
+  @@index([workspaceId, startAt])
+  @@index([projectId])
+  @@map("events")
+}
+
+model Decision {
+  id          String         @id @default(cuid())
+  workspaceId String         @map("workspace_id")
+  projectId   String?        @map("project_id")
+  title       String
+  context     String?
+  decision    String
+  reason      String?
+  alternatives Json?
+  impact      String?
+  status      DecisionStatus @default(PROPOSED)
+  decidedAt   DateTime?      @map("decided_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([projectId])
+  @@map("decisions")
+}
+
+model History {
+  id          String            @id @default(cuid())
+  workspaceId String            @map("workspace_id")
+  entityType  HistoryEntityType @map("entity_type")
+  entityId    String            @map("entity_id")
+  eventType   HistoryEventType  @map("event_type")
+  beforeValue Json?             @map("before_value")
+  afterValue  Json?             @map("after_value")
+  message     String
+  createdBy   String?           @map("created_by")
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("histories")
+}
+
+model CalendarSource {
+  id             String               @id @default(cuid())
+  workspaceId    String               @map("workspace_id")
+  provider       CalendarProvider
+  name           String
+  accountLabel   String?              @map("account_label")
+  syncDirection  SyncDirection        @default(READ_ONLY) @map("sync_direction")
+  syncStatus     CalendarSourceStatus @default(CONNECTED) @map("sync_status")
+  lastSyncedAt   DateTime?            @map("last_synced_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events         Event[]
+  externalEvents ExternalCalendarEvent[]
+  syncLogs       CalendarSyncLog[]
+
+  @@index([workspaceId, provider])
+  @@map("calendar_sources")
+}
+
+model ExternalCalendarEvent {
+  id               String          @id @default(cuid())
+  calendarSourceId String          @map("calendar_source_id")
+  eventId          String          @unique @map("event_id")
+  externalEventId  String          @map("external_event_id")
+  externalUid      String?         @map("external_uid")
+  etag             String?
+  lastModifiedAt   DateTime?       @map("last_modified_at")
+  syncStatus       EventSyncStatus @default(SYNCED) @map("sync_status")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  calendarSource   CalendarSource  @relation(fields: [calendarSourceId], references: [id], onDelete: Cascade)
+  event            Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarSourceId, externalEventId])
+  @@map("external_calendar_events")
+}
+
+model CalendarSyncLog {
+  id               String                @id @default(cuid())
+  calendarSourceId String                @map("calendar_source_id")
+  status           CalendarSyncLogStatus
+  message          String?
+  startedAt        DateTime              @map("started_at")
+  finishedAt       DateTime?             @map("finished_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  calendarSource   CalendarSource        @relation(fields: [calendarSourceId], references: [id], onDelete: Cascade)
+
+  @@index([calendarSourceId, createdAt])
+  @@map("calendar_sync_logs")
+}
+
+model CiProvider {
+  id          String           @id @default(cuid())
+  workspaceId String           @map("workspace_id")
+  name        String
+  type        CiProviderType
+  baseUrl     String           @map("base_url")
+  authType    CiAuthType       @default(TOKEN) @map("auth_type")
+  status      CiProviderStatus @default(CONNECTED)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  jobs        CiJob[]
+
+  @@index([workspaceId, type])
+  @@map("ci_providers")
+}
+
+model CiJob {
+  id            String        @id @default(cuid())
+  providerId    String        @map("provider_id")
+  projectId     String?       @map("project_id")
+  name          String
+  externalJobId String        @map("external_job_id")
+  url           String?
+  status        CiBuildStatus @default(UNKNOWN)
+  lastBuildId   String?       @map("last_build_id")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  provider      CiProvider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  builds        CiBuild[]
+
+  @@unique([providerId, externalJobId])
+  @@index([projectId])
+  @@map("ci_jobs")
+}
+
+model CiBuild {
+  id              String        @id @default(cuid())
+  ciJobId         String        @map("ci_job_id")
+  externalBuildId String        @map("external_build_id")
+  buildNumber     Int?          @map("build_number")
+  branch          String?
+  commitHash      String?       @map("commit_hash")
+  status          CiBuildStatus @default(UNKNOWN)
+  startedAt       DateTime?     @map("started_at")
+  finishedAt      DateTime?     @map("finished_at")
+  durationSeconds Int?          @map("duration_seconds")
+  logUrl          String?       @map("log_url")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  ciJob           CiJob         @relation(fields: [ciJobId], references: [id], onDelete: Cascade)
+
+  @@unique([ciJobId, externalBuildId])
+  @@index([ciJobId, createdAt])
+  @@map("ci_builds")
+}
